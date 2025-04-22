@@ -116,7 +116,7 @@ mysql -e "USE $DB_NAME; INSERT INTO users (username, password, email, role) VALU
 
 echo -e "${YELLOW}Установка CloudPRO...${NC}"
 mkdir -p $INSTALL_DIR
-git clone https://github.com/username/cloudpro.git $INSTALL_DIR || {
+git clone https://github.com/VerTusOffical/cloudpro.git $INSTALL_DIR || {
     echo -e "${YELLOW}Локальная установка...${NC}"
     mkdir -p $INSTALL_DIR/{config,modules,public,logs,tmp}
     mkdir -p $INSTALL_DIR/modules/{sites,databases,ssl,logs,filemanager,users}

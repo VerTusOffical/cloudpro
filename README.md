@@ -14,7 +14,7 @@ CloudPRO - современная панель управления сервер
 ## Установка
 
 ```bash
-wget -O cloudpro_install.sh https://raw.githubusercontent.com/username/cloudpro/main/install.sh
+wget -O cloudpro_install.sh https://raw.githubusercontent.com/VerTusOffical/cloudpro/main/install.sh
 chmod +x cloudpro_install.sh
 sudo ./cloudpro_install.sh
 ```
