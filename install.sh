@@ -27,6 +27,31 @@ DB_USER="cloudpro_user"
 DB_PASS=$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 16)
 ADMIN_PASS_HASH=$(echo -n "admin123" | sha256sum | awk '{print $1}')
 
+# Запрос предпочтительной версии PHP
+echo -e "${YELLOW}Выберите версию PHP для установки:${NC}"
+echo "1) PHP 7.4 (рекомендуется для максимальной совместимости)"
+echo "2) PHP 8.0"
+echo "3) PHP 8.1"
+echo "4) PHP 8.2"
+read -p "Введите номер [1-4] (по умолчанию: 1): " php_choice
+
+case $php_choice in
+    2)
+        PHP_VERSION="8.0"
+        ;;
+    3)
+        PHP_VERSION="8.1"
+        ;;
+    4)
+        PHP_VERSION="8.2"
+        ;;
+    *)
+        PHP_VERSION="7.4"
+        ;;
+esac
+
+echo -e "${GREEN}Выбрана версия PHP $PHP_VERSION${NC}"
+
 echo -e "${YELLOW}Проверка системы...${NC}"
 
 if [ -f /etc/os-release ]; then
@@ -63,21 +88,24 @@ apt upgrade -y
 
 echo -e "${YELLOW}Установка зависимостей...${NC}"
 
-# Определение версии PHP для установки
-# В Ubuntu 24.04 (Noble) используется PHP 8.3 по умолчанию
-PHP_VERSION="8.1"
-if [[ "$VERSION_ID" == "24.04" ]]; then
-    PHP_VERSION="8.3"
-elif [[ "$VERSION_ID" == "22.04" ]]; then
-    PHP_VERSION="8.1"
+# Проверяем доступность выбранной версии PHP
+echo -e "${YELLOW}Проверка доступности PHP $PHP_VERSION...${NC}"
+if ! apt-cache search php$PHP_VERSION-fpm | grep -q php$PHP_VERSION-fpm; then
+    echo -e "${RED}Версия PHP $PHP_VERSION не найдена в репозиториях. Будет установлена версия PHP 7.4${NC}"
+    PHP_VERSION="7.4"
 fi
 
-echo -e "${YELLOW}Будет установлена версия PHP ${PHP_VERSION}${NC}"
+echo -e "${YELLOW}Установка PHP $PHP_VERSION и других зависимостей...${NC}"
 
 # Установка зависимостей
 apt install -y nginx mysql-server php$PHP_VERSION-fpm php$PHP_VERSION-mysql php$PHP_VERSION-curl \
     php$PHP_VERSION-zip php$PHP_VERSION-gd php$PHP_VERSION-mbstring php$PHP_VERSION-xml \
-    php$PHP_VERSION-cli php$PHP_VERSION-json unzip wget curl git certbot python3-certbot-nginx
+    php$PHP_VERSION-cli unzip wget curl git certbot python3-certbot-nginx
+
+# Проверка, существует ли пакет php-json (в некоторых версиях PHP он включен по умолчанию)
+if apt-cache search php$PHP_VERSION-json | grep -q php$PHP_VERSION-json; then
+    apt install -y php$PHP_VERSION-json
+fi
 
 PORT_TO_USE=$DEFAULT_PORT
 if netstat -tuln | grep -q ":$PORT_TO_USE "; then
@@ -113,7 +141,7 @@ CREATE TABLE IF NOT EXISTS websites (
     domain VARCHAR(255) NOT NULL,
     path VARCHAR(255) NOT NULL,
     ssl_enabled TINYINT(1) DEFAULT 0,
-    php_version VARCHAR(10) DEFAULT '8.1',
+    php_version VARCHAR(10) DEFAULT '$PHP_VERSION',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
@@ -199,6 +227,7 @@ echo -e "${NC}"
 echo -e "URL панели: ${GREEN}http://$(curl -s ifconfig.me):$PORT_TO_USE${NC}"
 echo -e "Логин: ${GREEN}admin${NC}"
 echo -e "Пароль: ${GREEN}admin123${NC}"
+echo -e "Версия PHP: ${GREEN}$PHP_VERSION${NC}"
 echo
 echo -e "${YELLOW}Рекомендуется сменить пароль после первого входа!${NC}"
 echo "================================================================"
