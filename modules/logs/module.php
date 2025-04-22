@@ -1,67 +1,76 @@
 <?php
 /**
- * CloudPRO - Модуль просмотра логов
+ * CloudPRO - Модуль управления логами
  */
 
 class LogsModule extends Module {
-    protected $name = 'Логи';
-    protected $icon = 'fa-file-text';
-    protected $menuPosition = 40;
-    
-    // Пути к логам
-    private $logPaths = [
-        'nginx_access' => '/var/log/nginx/access.log',
-        'nginx_error' => '/var/log/nginx/error.log',
-        'apache_access' => '/var/log/apache2/access.log',
-        'apache_error' => '/var/log/apache2/error.log',
-        'mysql' => '/var/log/mysql/error.log',
-        'system' => '/var/log/syslog',
-        'app' => APP_PATH . '/logs'
-    ];
+    /**
+     * Конструктор модуля
+     * 
+     * @param Database $db Экземпляр базы данных
+     */
+    public function __construct(Database $db) {
+        parent::__construct($db);
+        $this->name = 'Логи';
+        $this->icon = 'fa-file-text-o';
+        $this->menuPosition = 5;
+    }
     
     /**
      * Регистрация маршрутов модуля
      * 
      * @param Router $router Экземпляр маршрутизатора
-     * @return void
      */
     public function registerRoutes(Router $router) {
-        $router->get('/logs', [$this, 'actionIndex']);
-        $router->get('/logs/view', [$this, 'actionView']);
-        $router->get('/logs/download', [$this, 'actionDownload']);
-        $router->post('/logs/clear', [$this, 'actionClear']);
+        // Список логов
+        $router->get('/logs', function() {
+            return $this->actionIndex();
+        });
+        
+        // Просмотр содержимого лога
+        $router->get('/logs/view', function() {
+            return $this->actionView();
+        });
+        
+        // Скачивание лога
+        $router->get('/logs/download', function() {
+            return $this->actionDownload();
+        });
+        
+        // Очистка лога
+        $router->post('/logs/clear', function() {
+            return $this->actionClear();
+        });
     }
     
     /**
-     * Получение статистики модуля
+     * Получение статистики для отображения на главной странице
      * 
      * @return array Статистика модуля
      */
     public function getStats() {
-        $appLogDir = APP_PATH . '/logs';
-        $appLogCount = 0;
-        $appLogSize = 0;
+        $logPath = LOG_PATH;
+        $logFiles = glob($logPath . '/*.log');
         
-        if (is_dir($appLogDir)) {
-            $files = scandir($appLogDir);
-            foreach ($files as $file) {
-                if ($file !== '.' && $file !== '..' && is_file($appLogDir . '/' . $file)) {
-                    $appLogCount++;
-                    $appLogSize += filesize($appLogDir . '/' . $file);
-                }
-            }
+        $totalLogs = count($logFiles);
+        $totalSize = 0;
+        
+        foreach ($logFiles as $logFile) {
+            $totalSize += filesize($logFile);
         }
         
         return [
-            'app_log_count' => $appLogCount,
-            'app_log_size' => formatFileSize($appLogSize)
+            'title' => 'Логи',
+            'count' => $totalLogs,
+            'size' => formatBytes($totalSize),
+            'icon' => $this->icon
         ];
     }
     
     /**
-     * Действие: список логов
+     * Отображение списка доступных логов
      * 
-     * @return void
+     * @return string HTML-код страницы
      */
     public function actionIndex() {
         // Проверка авторизации
@@ -70,64 +79,48 @@ class LogsModule extends Module {
             redirect('login');
         }
         
-        // Получение списка лог-файлов
+        $logPath = LOG_PATH;
+        $logFiles = glob($logPath . '/*.log');
+        
         $logs = [];
         
-        // Системные логи
-        foreach ($this->logPaths as $type => $path) {
-            if ($type === 'app') {
-                // Обработка директории с логами приложения
-                if (is_dir($path)) {
-                    $files = scandir($path);
-                    
-                    foreach ($files as $file) {
-                        if ($file === '.' || $file === '..') {
-                            continue;
-                        }
-                        
-                        $filePath = $path . '/' . $file;
-                        
-                        if (is_file($filePath)) {
-                            $logs[] = [
-                                'name' => 'Приложение: ' . $file,
-                                'path' => $filePath,
-                                'size' => filesize($filePath),
-                                'modified' => filemtime($filePath),
-                                'exists' => true
-                            ];
-                        }
-                    }
-                }
-            } else {
-                // Отдельные лог-файлы
-                $name = $this->getLogTypeName($type);
-                $exists = file_exists($path);
-                
-                $logs[] = [
-                    'name' => $name,
-                    'path' => $path,
-                    'size' => $exists ? filesize($path) : 0,
-                    'modified' => $exists ? filemtime($path) : 0,
-                    'exists' => $exists
-                ];
+        foreach ($logFiles as $logFile) {
+            $filename = basename($logFile);
+            $size = filesize($logFile);
+            $modified = filemtime($logFile);
+            
+            // Определяем тип лога (system, access, error и т.д.)
+            $type = 'unknown';
+            if (preg_match('/^([a-z]+)(_[0-9-]+)?\.log$/', $filename, $matches)) {
+                $type = $matches[1];
             }
+            
+            $logs[] = [
+                'name' => $filename,
+                'type' => $type,
+                'type_name' => $this->getLogTypeName($type),
+                'size' => formatBytes($size),
+                'modified' => date('Y-m-d H:i:s', $modified),
+                'url' => '?route=logs/view&file=' . urlencode($filename)
+            ];
         }
         
-        // Сортировка по времени изменения (сначала новые)
+        // Сортировка логов по времени изменения (новые вверху)
         usort($logs, function($a, $b) {
-            return $b['modified'] - $a['modified'];
+            return strtotime($b['modified']) - strtotime($a['modified']);
         });
         
-        $this->render('index', [
+        $template = new Template('modules/logs/list');
+        return $template->render([
             'logs' => $logs,
             'user' => $auth->getCurrentUser()
         ]);
     }
     
     /**
-     * Действие: просмотр содержимого лога
+     * Просмотр содержимого лога
      * 
-     * @return void
+     * @return string HTML-код страницы
      */
     public function actionView() {
         // Проверка авторизации
@@ -136,57 +129,44 @@ class LogsModule extends Module {
             redirect('login');
         }
         
-        $path = $_GET['path'] ?? '';
+        $file = isset($_GET['file']) ? $_GET['file'] : null;
         $lines = isset($_GET['lines']) ? (int)$_GET['lines'] : 100;
         
-        // Проверка безопасности пути
-        if (!$this->isPathSafe($path)) {
-            $this->render('error', [
-                'error' => 'Недопустимый путь к логу',
-                'user' => $auth->getCurrentUser()
-            ]);
-            return;
+        if (!$file || !$this->isPathSafe($file)) {
+            setFlash('error', 'Указан неверный или небезопасный файл лога');
+            redirect('logs');
         }
         
-        // Проверка существования файла
-        if (!file_exists($path) || !is_file($path) || !is_readable($path)) {
-            $this->render('error', [
-                'error' => 'Файл лога не существует или недоступен для чтения',
-                'user' => $auth->getCurrentUser()
-            ]);
-            return;
+        $logPath = LOG_PATH . '/' . $file;
+        
+        if (!file_exists($logPath)) {
+            setFlash('error', 'Файл лога не найден');
+            redirect('logs');
         }
         
-        // Получение последних строк лога
-        $content = $this->getTailContent($path, $lines);
-        
-        // Получение имени файла
-        $filename = basename($path);
-        
-        // Определение типа лога
+        // Определяем тип лога для подсветки
         $type = 'unknown';
-        foreach ($this->logPaths as $logType => $logPath) {
-            if ($path === $logPath || strpos($path, $logPath . '/') === 0) {
-                $type = $logType;
-                break;
-            }
+        if (preg_match('/^([a-z]+)(_[0-9-]+)?\.log$/', $file, $matches)) {
+            $type = $matches[1];
         }
         
-        $logTypeName = $this->getLogTypeName($type);
+        // Получаем последние N строк из файла
+        $content = $this->getTailContent($logPath, $lines);
         
-        $this->render('view', [
-            'path' => $path,
-            'filename' => $filename,
+        $template = new Template('modules/logs/view');
+        return $template->render([
+            'filename' => $file,
             'content' => $content,
-            'lines' => $lines,
             'type' => $type,
-            'typeName' => $logTypeName,
+            'type_name' => $this->getLogTypeName($type),
+            'lines' => $lines,
+            'file_size' => formatBytes(filesize($logPath)),
             'user' => $auth->getCurrentUser()
         ]);
     }
     
     /**
-     * Действие: скачивание лога
+     * Скачивание файла лога
      * 
      * @return void
      */
@@ -197,207 +177,147 @@ class LogsModule extends Module {
             redirect('login');
         }
         
-        $path = $_GET['path'] ?? '';
+        $file = isset($_GET['file']) ? $_GET['file'] : null;
         
-        // Проверка безопасности пути
-        if (!$this->isPathSafe($path)) {
-            $this->render('error', [
-                'error' => 'Недопустимый путь к логу',
-                'user' => $auth->getCurrentUser()
-            ]);
-            return;
+        if (!$file || !$this->isPathSafe($file)) {
+            setFlash('error', 'Указан неверный или небезопасный файл лога');
+            redirect('logs');
         }
         
-        // Проверка существования файла
-        if (!file_exists($path) || !is_file($path) || !is_readable($path)) {
-            $this->render('error', [
-                'error' => 'Файл лога не существует или недоступен для чтения',
-                'user' => $auth->getCurrentUser()
-            ]);
-            return;
+        $logPath = LOG_PATH . '/' . $file;
+        
+        if (!file_exists($logPath)) {
+            setFlash('error', 'Файл лога не найден');
+            redirect('logs');
         }
         
-        // Получение имени файла
-        $filename = basename($path);
-        
-        // Запись в лог
-        logMessage("Скачан лог-файл: $filename", 'info');
-        
-        // Отправка файла
+        // Отправляем файл
         header('Content-Description: File Transfer');
-        header('Content-Type: text/plain');
-        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Content-Type: application/octet-stream');
+        header('Content-Disposition: attachment; filename="' . basename($logPath) . '"');
         header('Expires: 0');
         header('Cache-Control: must-revalidate');
         header('Pragma: public');
-        header('Content-Length: ' . filesize($path));
-        readfile($path);
+        header('Content-Length: ' . filesize($logPath));
+        readfile($logPath);
         exit;
     }
     
     /**
-     * Действие: очистка лога
+     * Очистка файла лога
      * 
      * @return void
      */
     public function actionClear() {
-        // Проверка авторизации
+        // Проверка авторизации и прав
         global $auth;
-        if (!$auth->isLoggedIn()) {
-            redirect('login');
-        }
-        
-        // Доступ только для администраторов
-        if (!$auth->isAdmin()) {
+        if (!$auth->isLoggedIn() || !$auth->isAdmin()) {
+            setFlash('error', 'У вас нет прав на очистку логов');
             redirect('logs');
         }
         
-        $path = $_POST['path'] ?? '';
+        $file = isset($_POST['file']) ? $_POST['file'] : null;
         
-        // Проверка безопасности пути
-        if (!$this->isPathSafe($path)) {
-            $this->render('error', [
-                'error' => 'Недопустимый путь к логу',
-                'user' => $auth->getCurrentUser()
-            ]);
-            return;
-        }
-        
-        // Проверка существования файла
-        if (!file_exists($path) || !is_file($path)) {
+        if (!$file || !$this->isPathSafe($file)) {
+            setFlash('error', 'Указан неверный или небезопасный файл лога');
             redirect('logs');
         }
         
-        // Очистка файла
-        if (is_writable($path)) {
-            // Записываем пустую строку в файл
-            file_put_contents($path, '');
-            
-            // Запись в лог
-            logMessage("Очищен лог-файл: " . basename($path), 'info');
+        $logPath = LOG_PATH . '/' . $file;
+        
+        if (!file_exists($logPath)) {
+            setFlash('error', 'Файл лога не найден');
+            redirect('logs');
         }
         
-        // Перенаправление на список логов
+        // Очищаем файл
+        file_put_contents($logPath, '');
+        
+        setFlash('success', 'Файл лога успешно очищен');
         redirect('logs');
     }
     
     /**
-     * Получение имени типа лога
+     * Получение человекочитаемого названия типа лога
      * 
      * @param string $type Тип лога
      * @return string Название типа
      */
     private function getLogTypeName($type) {
-        $names = [
-            'nginx_access' => 'Nginx: журнал доступа',
-            'nginx_error' => 'Nginx: журнал ошибок',
-            'apache_access' => 'Apache: журнал доступа',
-            'apache_error' => 'Apache: журнал ошибок',
-            'mysql' => 'MySQL: журнал ошибок',
-            'system' => 'Системный журнал',
-            'app' => 'Журнал приложения'
+        $types = [
+            'system' => 'Системные логи',
+            'access' => 'Логи доступа',
+            'error' => 'Логи ошибок',
+            'mysql' => 'Логи MySQL',
+            'nginx' => 'Логи Nginx',
+            'php' => 'Логи PHP',
+            'app' => 'Логи приложения'
         ];
         
-        return $names[$type] ?? 'Неизвестный тип';
+        return isset($types[$type]) ? $types[$type] : 'Прочие логи';
     }
     
     /**
-     * Проверка безопасности пути к логу
+     * Проверка, что путь к файлу безопасен
      * 
-     * @param string $path Путь для проверки
+     * @param string $path Имя файла
      * @return bool True если путь безопасен
      */
     private function isPathSafe($path) {
-        // Нормализация пути
-        $realPath = realpath($path);
-        
-        // Проверка существования пути
-        if ($realPath === false) {
+        // Проверяем, что путь не содержит .. и не выходит за пределы директории логов
+        if (strpos($path, '..') !== false || strpos($path, '/') !== false) {
             return false;
         }
         
-        // Проверка соответствия типичным путям логов
-        foreach ($this->logPaths as $logPath) {
-            if ($realPath === realpath($logPath) || (is_dir($logPath) && strpos($realPath, realpath($logPath) . '/') === 0)) {
-                return true;
-            }
+        // Проверяем что это файл .log
+        if (!preg_match('/^[a-zA-Z0-9_-]+\.log$/', $path)) {
+            return false;
         }
         
-        return false;
+        return true;
     }
     
     /**
-     * Получение последних строк лога
+     * Получение последних N строк из файла
      * 
      * @param string $file Путь к файлу
      * @param int $lines Количество строк
      * @return string Содержимое
      */
     private function getTailContent($file, $lines = 100) {
-        // Проверяем размер файла
-        $fileSize = filesize($file);
-        if ($fileSize === 0) {
-            return '';
-        }
+        $content = '';
         
-        // Для небольших файлов просто читаем все содержимое
-        if ($fileSize < 1024 * 1024) { // Менее 1 МБ
-            $content = file_get_contents($file);
-            $contentLines = explode("\n", $content);
-            $totalLines = count($contentLines);
+        // Используем команду tail для больших файлов
+        if (function_exists('exec') && !in_array('exec', array_map('trim', explode(',', ini_get('disable_functions'))))) {
+            $content = @exec("tail -n $lines " . escapeshellarg($file));
             
-            if ($totalLines <= $lines) {
+            if (!empty($content)) {
                 return $content;
             }
-            
-            return implode("\n", array_slice($contentLines, -$lines));
         }
         
-        // Для больших файлов используем более эффективный метод
-        $handle = fopen($file, 'r');
-        if (!$handle) {
-            return 'Ошибка при открытии файла';
-        }
-        
-        $buffer = 4096;
-        $position = $fileSize - 1;
-        $chunksRead = 0;
-        $foundLines = 0;
-        $result = '';
-        
-        while ($position >= 0 && $foundLines < $lines) {
-            $readSize = min($buffer, $position + 1);
-            $position -= $readSize;
-            
-            fseek($handle, $position);
-            $chunk = fread($handle, $readSize);
-            $chunksRead++;
-            
-            // Считаем количество новых строк в текущем куске
-            $newLinesCount = substr_count($chunk, "\n");
-            $foundLines += $newLinesCount;
-            
-            $result = $chunk . $result;
-            
-            // Если прочитали достаточно строк или достигли начала файла
-            if ($foundLines >= $lines || $position < 0) {
-                break;
+        // Если exec недоступен или вернул пустой результат, читаем файл вручную
+        $fileHandle = @fopen($file, 'r');
+        if ($fileHandle) {
+            $lineArray = [];
+            while (!feof($fileHandle)) {
+                $line = fgets($fileHandle);
+                if ($line !== false) {
+                    $lineArray[] = $line;
+                    
+                    // Ограничиваем количество строк для больших файлов
+                    if (count($lineArray) > $lines * 2) {
+                        array_shift($lineArray);
+                    }
+                }
             }
+            fclose($fileHandle);
             
-            // Ограничение на количество итераций для безопасности
-            if ($chunksRead > 1000) {
-                break;
-            }
+            // Берем последние N строк
+            $lineArray = array_slice($lineArray, -$lines);
+            $content = implode('', $lineArray);
         }
         
-        fclose($handle);
-        
-        // Если нашли больше строк, чем нужно, удаляем лишние
-        if ($foundLines > $lines) {
-            $resultLines = explode("\n", $result);
-            $result = implode("\n", array_slice($resultLines, -$lines));
-        }
-        
-        return $result;
+        return $content;
     }
 } 

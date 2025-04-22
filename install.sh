@@ -246,10 +246,30 @@ git clone https://github.com/VerTusOffical/cloudpro.git $INSTALL_DIR || {
 </body>
 </html>
 EOF
+
+    # Создаем базовый index.php для проверки работы PHP
+    cat > $INSTALL_DIR/public/index.php << EOF
+<?php
+    // Базовый файл для проверки работы PHP
+    echo '<h1>CloudPRO установлен</h1>';
+    echo '<p>PHP работает корректно.</p>';
+    phpinfo();
+?>
+EOF
 }
 
+# Устанавливаем правильные права
+echo -e "${YELLOW}Настройка прав доступа...${NC}"
+find $INSTALL_DIR -type d -exec chmod 755 {} \;
+find $INSTALL_DIR -type f -exec chmod 644 {} \;
+chmod -R 755 $INSTALL_DIR/public
+if [ -d "$INSTALL_DIR/tmp" ]; then
+    chmod -R 777 $INSTALL_DIR/tmp
+fi
+if [ -d "$INSTALL_DIR/logs" ]; then
+    chmod -R 755 $INSTALL_DIR/logs
+fi
 chown -R www-data:www-data $INSTALL_DIR
-chmod -R 755 $INSTALL_DIR
 
 mkdir -p $INSTALL_DIR/config
 cat > $CONFIG_FILE << EOF
@@ -280,6 +300,61 @@ chown -R www-data:www-data $INSTALL_DIR/logs
 
 # Создаем публичную директорию, если она не существует
 mkdir -p $INSTALL_DIR/public
+
+# Убедимся, что в публичной директории есть индексные файлы
+if [ ! -f "$INSTALL_DIR/public/index.php" ]; then
+    echo -e "${YELLOW}Создание index.php...${NC}"
+    cat > $INSTALL_DIR/public/index.php << EOF
+<?php
+// Проверка наличия основных файлов
+if (file_exists(__DIR__ . '/../bootstrap.php')) {
+    require_once __DIR__ . '/../bootstrap.php';
+} else {
+    // Если основных файлов нет, показываем информацию о системе
+    echo '<h1>CloudPRO установлен</h1>';
+    echo '<p>PHP работает корректно.</p>';
+    
+    // Информация о системе
+    echo '<h2>Информация о системе:</h2>';
+    echo '<ul>';
+    echo '<li>PHP версия: ' . phpversion() . '</li>';
+    echo '<li>Сервер: ' . \$_SERVER['SERVER_SOFTWARE'] . '</li>';
+    echo '<li>Документ root: ' . \$_SERVER['DOCUMENT_ROOT'] . '</li>';
+    echo '</ul>';
+    
+    // Проверка соединения с базой данных
+    echo '<h2>Проверка базы данных:</h2>';
+    if (defined('DB_HOST') && defined('DB_USER') && defined('DB_PASS') && defined('DB_NAME')) {
+        try {
+            \$conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME);
+            if (\$conn->connect_errno) {
+                echo '<p style="color:red">Ошибка соединения с базой данных: ' . \$conn->connect_error . '</p>';
+            } else {
+                echo '<p style="color:green">Соединение с базой данных успешно!</p>';
+                \$conn->close();
+            }
+        } catch (Exception \$e) {
+            echo '<p style="color:red">Ошибка: ' . \$e->getMessage() . '</p>';
+        }
+    } else {
+        echo '<p style="color:orange">Конфигурация базы данных не определена.</p>';
+    }
+}
+?>
+EOF
+fi
+
+# Создаем .htaccess для Apache (если используется)
+cat > $INSTALL_DIR/public/.htaccess << EOF
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^(.*)$ index.php?/$1 [L]
+</IfModule>
+EOF
+
 cat > /etc/nginx/sites-available/cloudpro << EOF
 server {
     listen $PORT_TO_USE;

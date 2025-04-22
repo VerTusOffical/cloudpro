@@ -1,141 +1,261 @@
 <?php
 /**
- * Шаблон страницы просмотра содержимого лога
- * @var string $path Путь к файлу лога
+ * Шаблон просмотра содержимого лога
  * @var string $filename Имя файла
- * @var string $content Содержимое файла
- * @var int $lines Количество строк
+ * @var string $content Содержимое лога
  * @var string $type Тип лога
- * @var string $typeName Название типа лога
- * @var array $user Информация о пользователе
+ * @var string $type_name Название типа лога
+ * @var int $lines Количество показанных строк
+ * @var string $file_size Размер файла
+ * @var array $user Текущий пользователь
  */
 ?>
-<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-    <h1 class="h2">Просмотр журнала</h1>
-    <div class="btn-toolbar mb-2 mb-md-0">
-        <div class="btn-group me-2">
-            <a href="/logs" class="btn btn-sm btn-outline-secondary">
-                <i class="fa fa-arrow-left"></i> К списку журналов
-            </a>
+
+<div class="container-fluid">
+    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+        <h1 class="h2"><i class="fa fa-file-text-o"></i> Просмотр лога</h1>
+        <div class="btn-toolbar mb-2 mb-md-0">
+            <div class="btn-group me-2">
+                <a href="?route=logs" class="btn btn-sm btn-outline-secondary">
+                    <i class="fa fa-arrow-left"></i> Вернуться к списку
+                </a>
+            </div>
         </div>
     </div>
-</div>
-
-<div class="card mb-4">
-    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-        <h5 class="mb-0">
-            <i class="fa fa-file-text me-2"></i> <?php echo htmlspecialchars($filename); ?>
-        </h5>
-        <span class="badge bg-info"><?php echo htmlspecialchars($typeName); ?></span>
-    </div>
-    <div class="card-body">
-        <div class="mb-3">
-            <div class="row">
-                <div class="col-md-6">
-                    <p>
-                        <strong>Путь:</strong> <?php echo htmlspecialchars($path); ?><br>
-                        <strong>Размер:</strong> <?php echo formatFileSize(filesize($path)); ?>
-                    </p>
+    
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                    <div>
+                        <i class="fa fa-file-text-o me-2"></i> <?php echo htmlspecialchars($filename); ?>
+                    </div>
+                    <div>
+                        <span class="badge bg-light text-dark me-2"><?php echo htmlspecialchars($type_name); ?></span>
+                        <span class="badge bg-light text-dark"><?php echo htmlspecialchars($file_size); ?></span>
+                    </div>
                 </div>
-                <div class="col-md-6 text-end">
-                    <form method="get" action="/logs/view" class="mb-3">
-                        <input type="hidden" name="path" value="<?php echo htmlspecialchars($path); ?>">
-                        <div class="input-group">
-                            <label class="input-group-text" for="lines">Показать строк:</label>
-                            <select class="form-select" id="lines" name="lines" onchange="this.form.submit()">
-                                <option value="50" <?php echo $lines == 50 ? 'selected' : ''; ?>>50</option>
-                                <option value="100" <?php echo $lines == 100 ? 'selected' : ''; ?>>100</option>
-                                <option value="200" <?php echo $lines == 200 ? 'selected' : ''; ?>>200</option>
-                                <option value="500" <?php echo $lines == 500 ? 'selected' : ''; ?>>500</option>
-                                <option value="1000" <?php echo $lines == 1000 ? 'selected' : ''; ?>>1000</option>
-                            </select>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <div class="btn-toolbar">
+                            <div class="btn-group me-2">
+                                <a href="?route=logs/view&file=<?php echo urlencode($filename); ?>&lines=50" class="btn btn-sm <?php echo $lines == 50 ? 'btn-primary' : 'btn-outline-primary'; ?>">
+                                    Последние 50 строк
+                                </a>
+                                <a href="?route=logs/view&file=<?php echo urlencode($filename); ?>&lines=100" class="btn btn-sm <?php echo $lines == 100 ? 'btn-primary' : 'btn-outline-primary'; ?>">
+                                    Последние 100 строк
+                                </a>
+                                <a href="?route=logs/view&file=<?php echo urlencode($filename); ?>&lines=500" class="btn btn-sm <?php echo $lines == 500 ? 'btn-primary' : 'btn-outline-primary'; ?>">
+                                    Последние 500 строк
+                                </a>
+                                <a href="?route=logs/view&file=<?php echo urlencode($filename); ?>&lines=1000" class="btn btn-sm <?php echo $lines == 1000 ? 'btn-primary' : 'btn-outline-primary'; ?>">
+                                    Последние 1000 строк
+                                </a>
+                            </div>
+                            
+                            <div class="btn-group ms-2">
+                                <a href="?route=logs/download&file=<?php echo urlencode($filename); ?>" class="btn btn-sm btn-success">
+                                    <i class="fa fa-download"></i> Скачать файл
+                                </a>
+                                <?php if ($user['role'] === 'admin'): ?>
+                                    <button type="button" class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#clearLogModal" 
+                                        data-log-name="<?php echo htmlspecialchars($filename); ?>">
+                                        <i class="fa fa-trash"></i> Очистить лог
+                                    </button>
+                                <?php endif; ?>
+                            </div>
                         </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-        
-        <div class="btn-group mb-3">
-            <a href="/logs/download?path=<?php echo urlencode($path); ?>" class="btn btn-success">
-                <i class="fa fa-download"></i> Скачать журнал
-            </a>
-            <?php if ($user['role'] === 'admin'): ?>
-            <button type="button" class="btn btn-danger" 
-                    onclick="confirmClear('<?php echo htmlspecialchars(addslashes($filename)); ?>', '<?php echo htmlspecialchars(addslashes($path)); ?>')">
-                <i class="fa fa-trash"></i> Очистить журнал
-            </button>
-            <?php endif; ?>
-            <button type="button" class="btn btn-primary" onclick="refreshLog()">
-                <i class="fa fa-refresh"></i> Обновить
-            </button>
-        </div>
-        
-        <div class="log-viewer card">
-            <div class="card-header bg-dark text-white py-1">
-                <div class="row">
-                    <div class="col-md-6">
-                        Последние <?php echo $lines; ?> строк
                     </div>
-                    <div class="col-md-6 text-end">
-                        <button class="btn btn-sm btn-outline-light" onclick="toggleWrap()">
-                            <i class="fa fa-text-width"></i> Перенос строк
-                        </button>
+                    
+                    <div class="log-content">
+                        <?php if (empty($content)): ?>
+                            <div class="alert alert-info">
+                                Лог-файл пуст или не содержит данных.
+                            </div>
+                        <?php else: ?>
+                            <pre id="logContent" class="log-box <?php echo $type; ?>"><?php echo htmlspecialchars($content); ?></pre>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>
-            <div class="card-body p-0">
-                <pre id="logContent" class="m-0 p-3 log-content"><?php echo htmlspecialchars($content); ?></pre>
+        </div>
+    </div>
+    
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <i class="fa fa-search"></i> Поиск в логах
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <div class="input-group">
+                            <input type="text" id="searchInput" class="form-control" placeholder="Введите текст для поиска..." aria-label="Поиск">
+                            <button class="btn btn-outline-primary" type="button" id="searchButton">
+                                <i class="fa fa-search"></i> Найти
+                            </button>
+                            <button class="btn btn-outline-secondary" type="button" id="clearSearchButton">
+                                <i class="fa fa-times"></i> Очистить
+                            </button>
+                        </div>
+                        <div class="form-text text-muted">
+                            Поиск работает только на текущей странице и не ищет по всему файлу логов.
+                        </div>
+                    </div>
+                    <div id="searchResults" class="mt-2"></div>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Форма для очистки лога -->
-<form id="clearLogForm" method="post" action="/logs/clear">
-    <input type="hidden" name="path" id="logPath">
-</form>
+<!-- Модальное окно подтверждения очистки лога -->
+<?php if ($user['role'] === 'admin'): ?>
+<div class="modal fade" id="clearLogModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">Подтверждение очистки</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Вы уверены, что хотите очистить файл лога <strong id="logNameToDelete"></strong>?</p>
+                <p class="text-danger">Внимание! Это действие нельзя отменить. Все данные лога будут безвозвратно удалены.</p>
+            </div>
+            <div class="modal-footer">
+                <form method="post" action="?route=logs/clear">
+                    <input type="hidden" name="file" id="logFileToDelete">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-danger">Очистить</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
 
 <style>
-.log-content {
-    min-height: 300px;
-    max-height: 700px;
-    overflow-y: auto;
-    white-space: pre-wrap;
-    background-color: #f8f9fa;
-    color: #212529;
+.log-box {
+    background-color: #1e1e1e;
+    color: #f0f0f0;
     font-family: monospace;
-    font-size: 0.9rem;
+    padding: 15px;
+    border-radius: 5px;
+    white-space: pre-wrap;
+    max-height: 600px;
+    overflow-y: auto;
+    font-size: 13px;
+    line-height: 1.5;
 }
 
-.log-content.nowrap {
-    white-space: pre;
+.log-box .highlight {
+    background-color: #ffe066;
+    color: #333;
+    padding: 2px;
+    border-radius: 2px;
 }
 
-pre {
-    tab-size: 4;
+/* Стили для разных типов логов */
+.log-box.error, .log-box.php {
+    color: #f8f8f8;
+    background-color: #2d2d2d;
+}
+.log-box.access, .log-box.nginx {
+    color: #e0e0e0;
+    background-color: #282c34;
+}
+.log-box.system {
+    color: #d0d0d0;
+    background-color: #232937;
+}
+.log-box.mysql {
+    color: #e0e0e0;
+    background-color: #263238;
 }
 </style>
 
 <script>
-function confirmClear(name, path) {
-    if (confirm('Вы уверены, что хотите очистить лог "' + name + '"?\nЭто действие нельзя отменить.')) {
-        document.getElementById('logPath').value = path;
-        document.getElementById('clearLogForm').submit();
+// Прокрутка к концу лога при загрузке страницы
+document.addEventListener('DOMContentLoaded', function() {
+    var logContent = document.getElementById('logContent');
+    if (logContent) {
+        logContent.scrollTop = logContent.scrollHeight;
     }
-}
-
-function toggleWrap() {
-    const logContent = document.getElementById('logContent');
-    logContent.classList.toggle('nowrap');
-}
-
-function refreshLog() {
-    window.location.reload();
-}
-
-// При загрузке страницы прокручиваем к последней записи
-window.addEventListener('DOMContentLoaded', (event) => {
-    const logContent = document.getElementById('logContent');
-    logContent.scrollTop = logContent.scrollHeight;
+    
+    // Поиск в логе
+    var searchInput = document.getElementById('searchInput');
+    var searchButton = document.getElementById('searchButton');
+    var clearSearchButton = document.getElementById('clearSearchButton');
+    var searchResults = document.getElementById('searchResults');
+    
+    function performSearch() {
+        var searchText = searchInput.value.trim();
+        if (!searchText) {
+            searchResults.innerHTML = '';
+            // Очищаем все подсветки
+            var highlights = document.querySelectorAll('.highlight');
+            highlights.forEach(function(el) {
+                var parent = el.parentNode;
+                parent.replaceChild(document.createTextNode(el.textContent), el);
+            });
+            return;
+        }
+        
+        var content = logContent.textContent;
+        var matches = content.split('\n').filter(function(line) {
+            return line.toLowerCase().includes(searchText.toLowerCase());
+        });
+        
+        searchResults.innerHTML = '';
+        if (matches.length > 0) {
+            searchResults.innerHTML = '<div class="alert alert-success">Найдено совпадений: ' + matches.length + '</div>';
+            
+            // Подсвечиваем совпадения
+            var regex = new RegExp('(' + searchText.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&') + ')', 'gi');
+            logContent.innerHTML = logContent.textContent.replace(regex, '<span class="highlight">$1</span>');
+            
+            // Прокрутка к первому совпадению
+            var firstHighlight = document.querySelector('.highlight');
+            if (firstHighlight) {
+                firstHighlight.scrollIntoView({behavior: 'smooth', block: 'center'});
+            }
+        } else {
+            searchResults.innerHTML = '<div class="alert alert-warning">Совпадений не найдено</div>';
+        }
+    }
+    
+    if (searchButton) {
+        searchButton.addEventListener('click', performSearch);
+    }
+    
+    if (searchInput) {
+        searchInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                performSearch();
+                e.preventDefault();
+            }
+        });
+    }
+    
+    if (clearSearchButton) {
+        clearSearchButton.addEventListener('click', function() {
+            searchInput.value = '';
+            searchResults.innerHTML = '';
+            // Очищаем все подсветки
+            logContent.innerHTML = logContent.textContent;
+        });
+    }
+    
+    // Модальное окно очистки лога
+    var clearLogModal = document.getElementById('clearLogModal');
+    if (clearLogModal) {
+        clearLogModal.addEventListener('show.bs.modal', function(event) {
+            var button = event.relatedTarget;
+            var logName = button.getAttribute('data-log-name');
+            
+            document.getElementById('logNameToDelete').textContent = logName;
+            document.getElementById('logFileToDelete').value = logName;
+        });
+    }
 });
 </script> 

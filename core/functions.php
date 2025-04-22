@@ -77,23 +77,51 @@ function formatFileSize($bytes) {
 }
 
 /**
- * Запись в лог-файл
+ * Форматирует размер в байтах в человекочитаемый вид
+ * 
+ * @param int $bytes Размер в байтах
+ * @param int $precision Количество знаков после запятой
+ * @return string Отформатированный размер
+ */
+function formatBytes($bytes, $precision = 2) {
+    $units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+    
+    $bytes = max($bytes, 0);
+    $pow = floor(($bytes ? log($bytes) : 0) / log(1024));
+    $pow = min($pow, count($units) - 1);
+    
+    $bytes /= pow(1024, $pow);
+    
+    return round($bytes, $precision) . ' ' . $units[$pow];
+}
+
+/**
+ * Записывает сообщение в лог
  * 
  * @param string $message Сообщение для записи
- * @param string $level Уровень сообщения (info, warning, error)
- * @return bool Успешность записи
+ * @param string $level Уровень сообщения (info, warning, error, debug)
+ * @param string $logFile Имя файла лога (по умолчанию app.log)
+ * @return bool Успешность операции
  */
-function logMessage($message, $level = 'info') {
-    $logFile = LOG_PATH . '/app_' . date('Y-m-d') . '.log';
-    $timestamp = date('Y-m-d H:i:s');
-    $logEntry = "[$timestamp][$level] $message" . PHP_EOL;
-    
-    // Создаем директорию для лога, если она не существует
+function logMessage($message, $level = 'info', $logFile = 'app.log') {
     if (!is_dir(LOG_PATH)) {
         mkdir(LOG_PATH, 0755, true);
     }
     
-    return file_put_contents($logFile, $logEntry, FILE_APPEND);
+    $logPath = LOG_PATH . '/' . $logFile;
+    $dateTime = date('Y-m-d H:i:s');
+    $user = isset($_SESSION['username']) ? $_SESSION['username'] : 'guest';
+    $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+    
+    $logLine = sprintf("[%s] [%s] [%s] [%s] %s\n", 
+        $dateTime, 
+        strtoupper($level), 
+        $user, 
+        $ip, 
+        $message
+    );
+    
+    return file_put_contents($logPath, $logLine, FILE_APPEND | LOCK_EX) !== false;
 }
 
 /**
@@ -163,4 +191,33 @@ function isActiveMenu($path) {
  */
 function isWritableDirectory($path) {
     return is_dir($path) && is_writable($path);
+}
+
+/**
+ * Устанавливает флеш-сообщение для отображения пользователю
+ * 
+ * @param string $type Тип сообщения (success, info, warning, error)
+ * @param string $message Текст сообщения
+ * @return void
+ */
+function setFlash($type, $message) {
+    $_SESSION['flash'] = [
+        'type' => $type,
+        'message' => $message
+    ];
+}
+
+/**
+ * Получает и удаляет флеш-сообщение
+ * 
+ * @return array|null Массив с типом и текстом сообщения или null
+ */
+function getFlash() {
+    if (isset($_SESSION['flash'])) {
+        $flash = $_SESSION['flash'];
+        unset($_SESSION['flash']);
+        return $flash;
+    }
+    
+    return null;
 } 

@@ -30,6 +30,7 @@ class Auth {
             
             if ($user) {
                 $this->user = $user;
+                $_SESSION['username'] = $user['username'];
                 return true;
             }
         }
@@ -56,6 +57,7 @@ class Auth {
             if ($passwordHash === $user['password']) {
                 // Успешная авторизация
                 $_SESSION['user_id'] = $user['id'];
+                $_SESSION['username'] = $user['username'];
                 $_SESSION['last_activity'] = time();
                 $this->user = $user;
                 

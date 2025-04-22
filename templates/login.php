@@ -20,8 +20,6 @@
                     <?php endif; ?>
                     
                     <form method="post" action="/">
-                        <input type="hidden" name="action" value="login">
-                        
                         <div class="mb-3">
                             <label for="username" class="form-label">Имя пользователя</label>
                             <div class="input-group">
