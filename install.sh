@@ -58,12 +58,26 @@ if [ -d "$INSTALL_DIR" ]; then
 fi
 
 echo -e "${YELLOW}Обновление пакетов...${NC}"
-apt update -qq
-apt upgrade -y -qq
+apt update
+apt upgrade -y
 
 echo -e "${YELLOW}Установка зависимостей...${NC}"
-apt install -y -qq nginx mysql-server php-fpm php-mysql php-curl php-zip php-gd php-mbstring \
-    php-xml php-cli php-json unzip wget curl git certbot python3-certbot-nginx
+
+# Определение версии PHP для установки
+# В Ubuntu 24.04 (Noble) используется PHP 8.3 по умолчанию
+PHP_VERSION="8.1"
+if [[ "$VERSION_ID" == "24.04" ]]; then
+    PHP_VERSION="8.3"
+elif [[ "$VERSION_ID" == "22.04" ]]; then
+    PHP_VERSION="8.1"
+fi
+
+echo -e "${YELLOW}Будет установлена версия PHP ${PHP_VERSION}${NC}"
+
+# Установка зависимостей
+apt install -y nginx mysql-server php$PHP_VERSION-fpm php$PHP_VERSION-mysql php$PHP_VERSION-curl \
+    php$PHP_VERSION-zip php$PHP_VERSION-gd php$PHP_VERSION-mbstring php$PHP_VERSION-xml \
+    php$PHP_VERSION-cli php$PHP_VERSION-json unzip wget curl git certbot python3-certbot-nginx
 
 PORT_TO_USE=$DEFAULT_PORT
 if netstat -tuln | grep -q ":$PORT_TO_USE "; then
@@ -162,7 +176,7 @@ server {
     
     location ~ \.php$ {
         include snippets/fastcgi-php.conf;
-        fastcgi_pass unix:/var/run/php/php8.1-fpm.sock;
+        fastcgi_pass unix:/var/run/php/php${PHP_VERSION}-fpm.sock;
     }
     
     location ~ /\.ht {
@@ -175,7 +189,7 @@ ln -sf /etc/nginx/sites-available/cloudpro /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
 
 echo -e "${YELLOW}Перезапуск сервисов...${NC}"
-systemctl restart nginx mysql php8.1-fpm
+systemctl restart nginx mysql php${PHP_VERSION}-fpm
 
 echo -e "${GREEN}"
 echo "================================================================"
