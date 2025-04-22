@@ -100,7 +100,18 @@ apt install -y apt-transport-https ca-certificates curl gnupg lsb-release
 echo -e "${YELLOW}Установка PHP $PHP_VERSION и других зависимостей...${NC}"
 
 # В некоторых версиях могут различаться имена пакетов, поэтому проверяем каждый пакет
-PACKAGES="nginx mysql-server"
+PACKAGES="nginx"
+
+# Проверяем доступность mysql-server и mariadb-server
+if apt-cache search mysql-server 2>/dev/null | grep -q "^mysql-server "; then
+    PACKAGES="$PACKAGES mysql-server"
+elif apt-cache search mariadb-server 2>/dev/null | grep -q "^mariadb-server "; then
+    echo -e "${YELLOW}mysql-server не найден, используем mariadb-server${NC}"
+    PACKAGES="$PACKAGES mariadb-server"
+else
+    echo -e "${RED}Ошибка: ни mysql-server, ни mariadb-server не найдены в репозитории${NC}"
+    exit 1
+fi
 
 # Добавляем пакеты PHP
 for pkg in fpm mysql curl zip gd mbstring xml cli; do
@@ -155,11 +166,25 @@ elif command -v ss >/dev/null 2>&1; then
 fi
 
 echo -e "${YELLOW}Настройка MySQL...${NC}"
-# Проверяем, запущен ли MySQL
-if ! systemctl is-active --quiet mysql; then
-    echo -e "${YELLOW}Запуск службы MySQL...${NC}"
-    systemctl start mysql
+# Проверяем, запущен ли MySQL или MariaDB
+MYSQL_SERVICE="mysql"
+if ! systemctl is-active --quiet $MYSQL_SERVICE; then
+    echo -e "${YELLOW}MySQL/MariaDB не активен, пробуем mariadb...${NC}"
+    MYSQL_SERVICE="mariadb"
+    if ! systemctl is-active --quiet $MYSQL_SERVICE; then
+        echo -e "${YELLOW}Запуск службы MySQL/MariaDB...${NC}"
+        systemctl start $MYSQL_SERVICE || {
+            echo -e "${RED}Не удалось запустить MySQL/MariaDB. Пробуем запустить mysql...${NC}"
+            systemctl start mysql || {
+                echo -e "${RED}Ошибка: Не удалось запустить сервер MySQL/MariaDB${NC}"
+                exit 1
+            }
+            MYSQL_SERVICE="mysql"
+        }
+    fi
 fi
+
+echo -e "${GREEN}Сервер баз данных $MYSQL_SERVICE запущен${NC}"
 
 # Создаем базу данных и пользователя
 mysql -e "CREATE DATABASE IF NOT EXISTS $DB_NAME CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
