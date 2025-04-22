@@ -27,31 +27,6 @@ DB_USER="cloudpro_user"
 DB_PASS=$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 16)
 ADMIN_PASS_HASH=$(echo -n "admin123" | sha256sum | awk '{print $1}')
 
-# Запрос предпочтительной версии PHP
-echo -e "${YELLOW}Выберите версию PHP для установки:${NC}"
-echo "1) PHP 7.4 (рекомендуется для максимальной совместимости)"
-echo "2) PHP 8.0"
-echo "3) PHP 8.1"
-echo "4) PHP 8.2"
-read -p "Введите номер [1-4] (по умолчанию: 1): " php_choice
-
-case $php_choice in
-    2)
-        PHP_VERSION="8.0"
-        ;;
-    3)
-        PHP_VERSION="8.1"
-        ;;
-    4)
-        PHP_VERSION="8.2"
-        ;;
-    *)
-        PHP_VERSION="7.4"
-        ;;
-esac
-
-echo -e "${GREEN}Выбрана версия PHP $PHP_VERSION${NC}"
-
 echo -e "${YELLOW}Проверка системы...${NC}"
 
 if [ -f /etc/os-release ]; then
@@ -67,6 +42,39 @@ fi
 
 echo -e "${GREEN}Операционная система: $PRETTY_NAME - OK${NC}"
 
+# Определяем доступную версию PHP автоматически
+if [[ "$ID" == "debian" && "$VERSION_CODENAME" == "bookworm" ]]; then
+    # Debian 12 (bookworm) использует PHP 8.2 по умолчанию
+    PHP_VERSION="8.2"
+elif [[ "$ID" == "ubuntu" && "$VERSION_ID" == "24.04" ]]; then
+    # Ubuntu 24.04 (Noble) использует PHP 8.3 по умолчанию
+    PHP_VERSION="8.3"
+elif [[ "$ID" == "ubuntu" && "$VERSION_ID" == "22.04" ]]; then
+    # Ubuntu 22.04 использует PHP 8.1 по умолчанию
+    PHP_VERSION="8.1"
+else
+    # По умолчанию пробуем PHP 8.2, затем падаем до более старых версий при необходимости
+    PHP_VERSION="8.2"
+fi
+
+echo -e "${YELLOW}Автоматически определена версия PHP: $PHP_VERSION${NC}"
+echo -e "${YELLOW}Проверка доступности выбранной версии PHP...${NC}"
+
+# Проверяем доступность версии PHP в репозиториях
+if ! apt-cache search php$PHP_VERSION-fpm 2>/dev/null | grep -q php$PHP_VERSION-fpm; then
+    echo -e "${RED}Версия PHP $PHP_VERSION не найдена.${NC}"
+    
+    # Пробуем найти доступные версии PHP
+    echo -e "${YELLOW}Поиск доступных версий PHP...${NC}"
+    
+    for ver in 8.3 8.2 8.1 8.0 7.4; do
+        if apt-cache search php$ver-fpm 2>/dev/null | grep -q php$ver-fpm; then
+            PHP_VERSION=$ver
+            echo -e "${GREEN}Найдена доступная версия: PHP $PHP_VERSION${NC}"
+            break
+        fi
+    done
+fi
 
 if [ -d "$INSTALL_DIR" ]; then
     echo -e "${YELLOW}CloudPRO уже установлен в $INSTALL_DIR${NC}"
@@ -84,42 +92,76 @@ fi
 
 echo -e "${YELLOW}Обновление пакетов...${NC}"
 apt update
-apt upgrade -y
 
-echo -e "${YELLOW}Установка зависимостей...${NC}"
-
-# Проверяем доступность выбранной версии PHP
-echo -e "${YELLOW}Проверка доступности PHP $PHP_VERSION...${NC}"
-if ! apt-cache search php$PHP_VERSION-fpm | grep -q php$PHP_VERSION-fpm; then
-    echo -e "${RED}Версия PHP $PHP_VERSION не найдена в репозиториях. Будет установлена версия PHP 7.4${NC}"
-    PHP_VERSION="7.4"
-fi
+# Убедимся, что необходимые базовые пакеты установлены
+echo -e "${YELLOW}Установка основных зависимостей...${NC}"
+apt install -y apt-transport-https ca-certificates curl gnupg lsb-release
 
 echo -e "${YELLOW}Установка PHP $PHP_VERSION и других зависимостей...${NC}"
 
-# Установка зависимостей
-apt install -y nginx mysql-server php$PHP_VERSION-fpm php$PHP_VERSION-mysql php$PHP_VERSION-curl \
-    php$PHP_VERSION-zip php$PHP_VERSION-gd php$PHP_VERSION-mbstring php$PHP_VERSION-xml \
-    php$PHP_VERSION-cli unzip wget curl git certbot python3-certbot-nginx
+# В некоторых версиях могут различаться имена пакетов, поэтому проверяем каждый пакет
+PACKAGES="nginx mysql-server"
 
-# Проверка, существует ли пакет php-json (в некоторых версиях PHP он включен по умолчанию)
-if apt-cache search php$PHP_VERSION-json | grep -q php$PHP_VERSION-json; then
-    apt install -y php$PHP_VERSION-json
+# Добавляем пакеты PHP
+for pkg in fpm mysql curl zip gd mbstring xml cli; do
+    if apt-cache search php$PHP_VERSION-$pkg 2>/dev/null | grep -q php$PHP_VERSION-$pkg; then
+        PACKAGES="$PACKAGES php$PHP_VERSION-$pkg"
+    fi
+done
+
+# Проверяем пакет php-json (в некоторых версиях включен по умолчанию)
+if apt-cache search php$PHP_VERSION-json 2>/dev/null | grep -q php$PHP_VERSION-json; then
+    PACKAGES="$PACKAGES php$PHP_VERSION-json"
 fi
 
+# Добавляем другие необходимые пакеты
+PACKAGES="$PACKAGES unzip wget curl git"
+
+# Проверяем наличие certbot
+if apt-cache search certbot 2>/dev/null | grep -q "^certbot "; then
+    PACKAGES="$PACKAGES certbot"
+    
+    if apt-cache search python3-certbot-nginx 2>/dev/null | grep -q python3-certbot-nginx; then
+        PACKAGES="$PACKAGES python3-certbot-nginx"
+    fi
+fi
+
+echo -e "${YELLOW}Установка пакетов: $PACKAGES${NC}"
+apt install -y $PACKAGES
+
 PORT_TO_USE=$DEFAULT_PORT
-if netstat -tuln | grep -q ":$PORT_TO_USE "; then
-    echo -e "${YELLOW}Порт $PORT_TO_USE занят, поиск свободного порта...${NC}"
-    for port in $(seq 8000 10000); do
-        if ! netstat -tuln | grep -q ":$port "; then
-            PORT_TO_USE=$port
-            echo -e "${GREEN}Найден свободный порт: $PORT_TO_USE${NC}"
-            break
-        fi
-    done
+if command -v netstat >/dev/null 2>&1; then
+    if netstat -tuln | grep -q ":$PORT_TO_USE "; then
+        echo -e "${YELLOW}Порт $PORT_TO_USE занят, поиск свободного порта...${NC}"
+        for port in $(seq 8000 10000); do
+            if ! netstat -tuln | grep -q ":$port "; then
+                PORT_TO_USE=$port
+                echo -e "${GREEN}Найден свободный порт: $PORT_TO_USE${NC}"
+                break
+            fi
+        done
+    fi
+elif command -v ss >/dev/null 2>&1; then
+    if ss -tuln | grep -q ":$PORT_TO_USE "; then
+        echo -e "${YELLOW}Порт $PORT_TO_USE занят, поиск свободного порта...${NC}"
+        for port in $(seq 8000 10000); do
+            if ! ss -tuln | grep -q ":$port "; then
+                PORT_TO_USE=$port
+                echo -e "${GREEN}Найден свободный порт: $PORT_TO_USE${NC}"
+                break
+            fi
+        done
+    fi
 fi
 
 echo -e "${YELLOW}Настройка MySQL...${NC}"
+# Проверяем, запущен ли MySQL
+if ! systemctl is-active --quiet mysql; then
+    echo -e "${YELLOW}Запуск службы MySQL...${NC}"
+    systemctl start mysql
+fi
+
+# Создаем базу данных и пользователя
 mysql -e "CREATE DATABASE IF NOT EXISTS $DB_NAME CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 mysql -e "CREATE USER IF NOT EXISTS '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASS';"
 mysql -e "GRANT ALL PRIVILEGES ON $DB_NAME.* TO '$DB_USER'@'localhost';"
@@ -162,6 +204,23 @@ git clone https://github.com/VerTusOffical/cloudpro.git $INSTALL_DIR || {
     echo -e "${YELLOW}Локальная установка...${NC}"
     mkdir -p $INSTALL_DIR/{config,modules,public,logs,tmp}
     mkdir -p $INSTALL_DIR/modules/{sites,databases,ssl,logs,filemanager,users}
+    
+    # Создаем публичный каталог с простым index.html если git-клонирование не удалось
+    mkdir -p $INSTALL_DIR/public
+    cat > $INSTALL_DIR/public/index.html << EOF
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CloudPRO</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+    <h1>CloudPRO установлен</h1>
+    <p>Если вы видите эту страницу, значит PHP не настроен правильно.</p>
+</body>
+</html>
+EOF
 }
 
 chown -R www-data:www-data $INSTALL_DIR
@@ -190,6 +249,12 @@ define('SALT', '$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32)');
 ?>
 EOF
 
+# Создаем директорию для логов, если она не существует
+mkdir -p $INSTALL_DIR/logs
+chown -R www-data:www-data $INSTALL_DIR/logs
+
+# Создаем публичную директорию, если она не существует
+mkdir -p $INSTALL_DIR/public
 cat > /etc/nginx/sites-available/cloudpro << EOF
 server {
     listen $PORT_TO_USE;
@@ -213,18 +278,28 @@ server {
 }
 EOF
 
+# Создаем символическую ссылку и удаляем стандартную конфигурацию
 ln -sf /etc/nginx/sites-available/cloudpro /etc/nginx/sites-enabled/
-rm -f /etc/nginx/sites-enabled/default
+if [ -f /etc/nginx/sites-enabled/default ]; then
+    rm -f /etc/nginx/sites-enabled/default
+fi
 
 echo -e "${YELLOW}Перезапуск сервисов...${NC}"
-systemctl restart nginx mysql php${PHP_VERSION}-fpm
+systemctl restart nginx
+systemctl restart php${PHP_VERSION}-fpm
+
+# Проверяем IP-адрес сервера
+SERVER_IP=$(hostname -I | awk '{print $1}')
+if [ -z "$SERVER_IP" ]; then
+    SERVER_IP="ваш_ip_адрес"
+fi
 
 echo -e "${GREEN}"
 echo "================================================================"
 echo "       CloudPRO успешно установлен и готов к работе!            "
 echo "================================================================"
 echo -e "${NC}"
-echo -e "URL панели: ${GREEN}http://$(curl -s ifconfig.me):$PORT_TO_USE${NC}"
+echo -e "URL панели: ${GREEN}http://${SERVER_IP}:$PORT_TO_USE${NC}"
 echo -e "Логин: ${GREEN}admin${NC}"
 echo -e "Пароль: ${GREEN}admin123${NC}"
 echo -e "Версия PHP: ${GREEN}$PHP_VERSION${NC}"
