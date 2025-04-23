@@ -4,6 +4,11 @@
  * Этот файл инициализирует основные компоненты системы
  */
 
+// Настройка отображения ошибок для отладки
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
 // Проверка наличия установленной конфигурации
 if (!file_exists(__DIR__ . '/config/config.php')) {
     die('Ошибка: Файл конфигурации не найден. Пожалуйста, запустите установщик.');
@@ -25,7 +30,31 @@ require_once __DIR__ . '/core/Template.php';
 session_start();
 
 // Создание экземпляра базы данных
-$db = new Database(DB_HOST, DB_NAME, DB_USER, DB_PASS);
+try {
+    $db = new Database(DB_HOST, DB_NAME, DB_USER, DB_PASS);
+} catch (Exception $e) {
+    die('Ошибка подключения к базе данных: ' . $e->getMessage());
+}
+
+// Проверка наличия необходимых таблиц
+$requiredTables = ['users', 'websites', 'db_list', 'api_keys'];
+$missingTables = [];
+
+foreach ($requiredTables as $table) {
+    try {
+        $result = $db->query("SHOW TABLES LIKE '$table'");
+        if (empty($result)) {
+            $missingTables[] = $table;
+        }
+    } catch (Exception $e) {
+        die('Ошибка при проверке таблиц: ' . $e->getMessage());
+    }
+}
+
+if (!empty($missingTables)) {
+    die('В базе данных отсутствуют необходимые таблицы: ' . implode(', ', $missingTables) . 
+        '. Запустите скрипт ./install.sh с параметром "repair", чтобы восстановить таблицы.');
+}
 
 // Инициализация аутентификации
 $auth = new Auth($db);
@@ -54,4 +83,4 @@ foreach ($moduleDirectories as $moduleDir) {
 }
 
 // Добавление базовых маршрутов
-require_once __DIR__ . '/routes.php'; 
+require_once __DIR__ . '/routes.php';

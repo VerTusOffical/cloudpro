@@ -30,6 +30,18 @@ sudo ./cloudpro_install.sh
 - Все параметры доступа будут сохранены в файле `/usr/local/CloudPRO/config/config.php`
 - После установки рекомендуется сменить пароль администратора
 
+### Управление панелью
+
+CloudPRO включает встроенные команды для управления:
+
+```bash
+# Восстановление панели (проверка структуры БД, прав доступа и т.д.)
+sudo ./cloudpro_install.sh repair
+
+# Удаление панели
+sudo ./cloudpro_install.sh remove
+```
+
 ## Локальная разработка
 
 Для локальной разработки:
@@ -38,6 +50,29 @@ sudo ./cloudpro_install.sh
 2. Создать копию `config/config.example.php` и назвать её `config/config.php`
 3. Настроить параметры подключения к базе данных
 4. Убедиться, что директории `logs` и `public` имеют необходимые права доступа
+
+## Решение проблем
+
+Если вы столкнулись с ошибками при установке или первом запуске:
+
+1. Просмотр логов ошибок PHP и Nginx:
+   ```bash
+   sudo tail -n 100 /var/log/nginx/error.log
+   ```
+
+2. Восстановление панели может решить большинство проблем:
+   ```bash
+   sudo ./cloudpro_install.sh repair
+   ```
+
+3. Включение отображения ошибок PHP - добавьте в начало `bootstrap.php`:
+   ```php
+   ini_set('display_errors', 1);
+   ini_set('display_startup_errors', 1);
+   error_reporting(E_ALL);
+   ```
+
+Подробная информация о поиске и устранении неисправностей доступна в файле [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
 ## Системные требования
 
