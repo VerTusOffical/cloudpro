@@ -22,9 +22,11 @@ echo -e "${NC}"
 INSTALL_DIR="/usr/local/CloudPRO"
 DEFAULT_PORT=9999
 CONFIG_FILE="$INSTALL_DIR/config/config.php"
-DB_NAME="cloudpro"
-DB_USER="cloudpro_user"
-DB_PASS=$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 16)
+
+# Генерация случайных данных для базы данных панели
+PANEL_DB_NAME="cloudpro"
+PANEL_DB_USER="cloudpro_user"
+PANEL_DB_PASS=$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c $(shuf -i 8-15 -n 1))
 ADMIN_PASS_HASH=$(echo -n "admin123" | sha256sum | awk '{print $1}')
 
 echo -e "${YELLOW}Проверка системы...${NC}"
@@ -186,14 +188,15 @@ fi
 
 echo -e "${GREEN}Сервер баз данных $MYSQL_SERVICE запущен${NC}"
 
-# Создаем базу данных и пользователя
-mysql -e "CREATE DATABASE IF NOT EXISTS $DB_NAME CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-mysql -e "CREATE USER IF NOT EXISTS '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASS';"
-mysql -e "GRANT ALL PRIVILEGES ON $DB_NAME.* TO '$DB_USER'@'localhost';"
+# Создаем базу данных и пользователя для панели
+echo -e "${YELLOW}Создание базы данных для панели управления...${NC}"
+mysql -e "CREATE DATABASE IF NOT EXISTS $PANEL_DB_NAME CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+mysql -e "CREATE USER IF NOT EXISTS '$PANEL_DB_USER'@'localhost' IDENTIFIED BY '$PANEL_DB_PASS';"
+mysql -e "GRANT ALL PRIVILEGES ON $PANEL_DB_NAME.* TO '$PANEL_DB_USER'@'localhost';"
 mysql -e "FLUSH PRIVILEGES;"
 
 echo -e "${YELLOW}Создание структуры базы данных...${NC}"
-mysql -e "USE $DB_NAME; 
+mysql -e "USE $PANEL_DB_NAME; 
 CREATE TABLE IF NOT EXISTS users (
     id INT AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(50) NOT NULL UNIQUE,
@@ -221,7 +224,7 @@ CREATE TABLE IF NOT EXISTS db_list (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );"
 
-mysql -e "USE $DB_NAME; INSERT INTO users (username, password, email, role) VALUES ('admin', '$ADMIN_PASS_HASH', 'admin@localhost', 'admin') ON DUPLICATE KEY UPDATE password='$ADMIN_PASS_HASH';"
+mysql -e "USE $PANEL_DB_NAME; INSERT INTO users (username, password, email, role) VALUES ('admin', '$ADMIN_PASS_HASH', 'admin@localhost', 'admin') ON DUPLICATE KEY UPDATE password='$ADMIN_PASS_HASH';"
 
 echo -e "${YELLOW}Установка CloudPRO...${NC}"
 mkdir -p $INSTALL_DIR
@@ -278,9 +281,9 @@ cat > $CONFIG_FILE << EOF
 
 // Database settings
 define('DB_HOST', 'localhost');
-define('DB_NAME', '$DB_NAME');
-define('DB_USER', '$DB_USER');
-define('DB_PASS', '$DB_PASS');
+define('DB_NAME', '$PANEL_DB_NAME');
+define('DB_USER', '$PANEL_DB_USER');
+define('DB_PASS', '$PANEL_DB_PASS');
 
 // Application settings
 define('APP_URL', 'http://' . \$_SERVER['SERVER_ADDR'] . ':$PORT_TO_USE');
@@ -291,6 +294,7 @@ define('LOG_PATH', APP_PATH . '/logs');
 // Security settings
 define('SESSION_LIFETIME', 3600); // 1 hour
 define('SALT', '$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32)');
+define('APP_VERSION', '1.0.0');
 ?>
 EOF
 
